@@ -1,0 +1,881 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AzCopy Runner</title>
+<style>
+:root {
+  --bg: #f4f6f9; --surface: #ffffff; --surface-2: #f8f9fb; --border: #dde2ea; --text: #1b2330; --muted: #5d6879;
+  --accent: #0b6bcb; --accent-ink: #ffffff; --accent-soft: #e5f0fb;
+  --ok: #19794a; --ok-soft: #e3f4ea; --warn: #9a6200; --warn-soft: #fdf1dc; --bad: #b42318; --bad-soft: #fdeceb;
+  --run: #0b6bcb; --run-soft: #e5f0fb; --code-bg: #0f1722; --code-ink: #d6e2f0;
+  --radius: 10px; --shadow: 0 1px 2px rgba(16,24,40,.06), 0 2px 8px rgba(16,24,40,.05);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f141b; --surface: #171e27; --surface-2: #1c242f; --border: #2c3644; --text: #e6ebf2; --muted: #96a2b3;
+    --accent: #4c9bec; --accent-ink: #08121e; --accent-soft: #15283d;
+    --ok: #4cc38a; --ok-soft: #13291f; --warn: #e2a640; --warn-soft: #2d2412; --bad: #f07167; --bad-soft: #321a19;
+    --run: #4c9bec; --run-soft: #15283d; --code-bg: #0a0f15; --code-ink: #c9d6e6;
+    --shadow: none; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f141b; --surface: #171e27; --surface-2: #1c242f; --border: #2c3644; --text: #e6ebf2; --muted: #96a2b3;
+  --accent: #4c9bec; --accent-ink: #08121e; --accent-soft: #15283d;
+  --ok: #4cc38a; --ok-soft: #13291f; --warn: #e2a640; --warn-soft: #2d2412; --bad: #f07167; --bad-soft: #321a19;
+  --run: #4c9bec; --run-soft: #15283d; --code-bg: #0a0f15; --code-ink: #c9d6e6;
+  --shadow: none; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif; }
+button, input, select { font: inherit; color: inherit; }
+.topbar { position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--border); }
+.topbar-in { max-width: 1500px; margin: 0 auto; padding: 10px 16px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.brand { font-weight: 650; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.brand svg { color: var(--accent); }
+.summary { color: var(--muted); font-size: 13px; }
+.spacer { flex: 1; }
+.btn { border: 1px solid var(--border); background: var(--surface); padding: 6px 12px; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+.btn:hover:not(:disabled) { background: var(--surface-2); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.btn.primary:hover:not(:disabled) { filter: brightness(1.08); background: var(--accent); }
+.btn.danger { color: var(--bad); }
+.btn.small { padding: 3px 9px; font-size: 13px; }
+.settings { max-width: 1500px; margin: 0 auto; padding: 0 16px 10px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.settings label { font-size: 13px; color: var(--muted); }
+.settings input { flex: 1 1 320px; min-width: 0; }
+.az-status { font-size: 13px; }
+.az-status.ok { color: var(--ok); } .az-status.bad { color: var(--bad); }
+.banner { display: none; max-width: 1500px; margin: 12px auto 0; padding: 10px 14px; border-radius: 8px; background: var(--bad-soft); color: var(--bad); }
+.banner.show { display: block; }
+main { max-width: 1500px; margin: 0 auto; padding: 16px 16px 96px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(520px, 100%), 1fr)); gap: 16px; align-items: start; }
+.empty { text-align: center; color: var(--muted); padding: 60px 16px; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
+.card[data-state="running"] { border-color: var(--run); }
+.card-h { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+.card-h .name { flex: 1; min-width: 0; border: 1px solid transparent; background: transparent; font-weight: 600; font-size: 15px; padding: 3px 6px; border-radius: 6px; }
+.card-h .name:hover, .card-h .name:focus { border-color: var(--border); background: var(--surface); outline: none; }
+.icon { border: 0; background: transparent; width: 30px; height: 30px; border-radius: 6px; cursor: pointer; color: var(--muted); display: grid; place-items: center; }
+.icon:hover { background: var(--border); color: var(--text); }
+.pill { font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 99px; background: var(--border); color: var(--muted); white-space: nowrap; }
+.pill.running { background: var(--run-soft); color: var(--run); }
+.pill.completed { background: var(--ok-soft); color: var(--ok); }
+.pill.warning { background: var(--warn-soft); color: var(--warn); }
+.pill.failed { background: var(--bad-soft); color: var(--bad); }
+.pill.stopped { background: var(--warn-soft); color: var(--warn); }
+
+.formset { border: 0; margin: 0; padding: 12px; min-width: 0; display: grid; gap: 12px; }
+.formset:disabled { opacity: .75; }
+.two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 560px) { .two, .opts-grid { grid-template-columns: 1fr !important; } }
+.field { display: grid; gap: 4px; min-width: 0; }
+.field > span { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+input[type=text], input[type=password], select { width: 100%; min-width: 0; padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px; background: var(--surface); }
+input:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.help { font-size: 12px; color: var(--muted); min-height: 1em; }
+.help.danger { color: var(--bad); }
+.end { border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: grid; gap: 8px; min-width: 0; margin: 0; }
+.end legend { font-size: 12px; font-weight: 700; color: var(--muted); padding: 0 4px; text-transform: uppercase; letter-spacing: .03em; }
+.line { display: flex; gap: 6px; min-width: 0; }
+.line input { flex: 1; }
+.opts { border-top: 1px dashed var(--border); padding-top: 10px; }
+.opts summary { cursor: pointer; font-weight: 600; margin-bottom: 10px; }
+.opts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.opts-grid .wide { grid-column: 1 / -1; }
+.preview { background: var(--code-bg); color: var(--code-ink); border-radius: 8px; padding: 10px; font-size: 12px; }
+.preview .pv-h { color: #8fa3b8; margin-bottom: 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.preview code { font-family: Consolas, "Cascadia Mono", monospace; word-break: break-all; white-space: pre-wrap; }
+.msgs { list-style: none; margin: 0; padding: 0 12px; display: grid; gap: 4px; }
+.msgs:empty { display: none; }
+.test { margin: 0 12px 12px; border: 1px solid var(--border); border-radius: 8px; padding: 10px; display: grid; gap: 8px; }
+.test-h { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.checks li { display: grid; grid-template-columns: 20px 1fr; gap: 6px; font-size: 13px; }
+.checks .ic { font-weight: 700; text-align: center; }
+.checks .ok .ic { color: var(--ok); } .checks .warn .ic { color: var(--warn); } .checks .error .ic { color: var(--bad); }
+.checks .running .ic { color: var(--run); }
+.checks b { font-weight: 600; }
+.checks .d { color: var(--muted); word-break: break-word; }
+.test-sum { font-size: 13px; font-weight: 600; padding: 8px 10px; border-radius: 6px; }
+.test-sum:empty { display: none; }
+.test-sum.ok { background: var(--ok-soft); color: var(--ok); }
+.test-sum.warn { background: var(--warn-soft); color: var(--warn); }
+.test-sum.error { background: var(--bad-soft); color: var(--bad); }
+.masked { -webkit-text-security: disc; text-security: disc; }
+.muted { color: var(--muted); font-weight: 400; font-size: 12px; }
+.signin { flex: 1 1 100%; border-top: 1px dashed var(--border); padding-top: 8px; display: grid; gap: 6px; }
+.signin-h { font-size: 13px; font-weight: 600; }
+.signin-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.signin-row input { flex: 1 1 260px; min-width: 0; }
+.signin-box { display: grid; gap: 6px; }
+.signin-code { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); }
+.signin-code code { font: 700 18px/1 Consolas, monospace; letter-spacing: .08em; }
+.signin-code a { color: var(--accent); font-weight: 600; }
+#signin-out { max-height: 140px; }
+.verify { font-size: 13px; padding: 8px 10px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); }
+.verify.ok { background: var(--ok-soft); color: var(--ok); border-color: transparent; }
+.verify.warn { background: var(--warn-soft); color: var(--warn); border-color: transparent; }
+.verify.running { background: var(--run-soft); color: var(--run); border-color: transparent; }
+.msgs li { font-size: 13px; padding: 6px 9px; border-radius: 6px; }
+.msgs li.err { background: var(--bad-soft); color: var(--bad); }
+.msgs li.warn { background: var(--warn-soft); color: var(--warn); }
+
+.run { padding: 0 12px 12px; display: grid; gap: 8px; }
+.run[hidden] { display: none; }
+.bar { height: 8px; background: var(--border); border-radius: 99px; overflow: hidden; }
+.bar > div { height: 100%; width: 0; background: var(--run); transition: width .4s; }
+.bar.indet > div { width: 30%; animation: slide 1.2s infinite ease-in-out; }
+@keyframes slide { from { margin-left: -30%; } to { margin-left: 100%; } }
+.stats { font-size: 12px; color: var(--muted); font-family: Consolas, monospace; word-break: break-word; }
+.meta { font-size: 12px; color: var(--muted); display: flex; gap: 12px; flex-wrap: wrap; }
+.log { margin: 0; max-height: 260px; overflow: auto; background: var(--code-bg); color: var(--code-ink); padding: 10px; border-radius: 8px; font: 12px/1.4 Consolas, "Cascadia Mono", monospace; white-space: pre-wrap; word-break: break-all; }
+.actions { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); background: var(--surface-2); flex-wrap: wrap; }
+.fab { position: fixed; right: 24px; bottom: 24px; width: 56px; height: 56px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); box-shadow: 0 4px 14px rgba(0,0,0,.25); cursor: pointer; display: grid; place-items: center; z-index: 6; }
+.fab:hover { filter: brightness(1.1); }
+.overlay { position: fixed; inset: 0; background: var(--bg); display: none; place-items: center; z-index: 20; text-align: center; padding: 16px; }
+.overlay.show { display: grid; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-in">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.5 19a4.5 4.5 0 1 0-1.3-8.8A6 6 0 0 0 4.5 12a4 4 0 0 0 1 7.9"/><path d="M12 12v9"/><path d="m8.5 15.5 3.5-3.5 3.5 3.5"/></svg>
+      AzCopy Runner
+    </div>
+    <div class="summary" id="summary">No transfers yet</div>
+    <div class="spacer"></div>
+    <button class="btn" id="btn-settings" aria-expanded="false">Settings</button>
+    <button class="btn primary" id="btn-add">+ New transfer</button>
+    <button class="btn danger" id="btn-quit" title="Stop the AzCopy Runner server">Quit</button>
+  </div>
+  <div class="settings" id="settings" hidden>
+    <label for="az-path">azcopy path</label>
+    <input type="text" id="az-path" spellcheck="false" placeholder="Leave empty to auto-detect (this folder, then PATH), or enter the full path to azcopy">
+    <button class="btn" id="az-browse">Browse…</button>
+    <button class="btn" id="az-save">Save &amp; check</button>
+    <span class="az-status" id="az-status">Checking…</span>
+    <div class="signin">
+      <div class="signin-h">Azure sign-in <span class="muted">(optional – for transfers that use "My Microsoft account" instead of SAS tokens)</span></div>
+      <div class="signin-row">
+        <input type="text" id="tenant" spellcheck="false" placeholder="Tenant ID or domain (optional, e.g. contoso.onmicrosoft.com)">
+        <button class="btn" id="signin">Sign in to Azure</button>
+        <button class="btn" id="signin-cancel" hidden>Cancel</button>
+        <button class="btn" id="signout">Sign out</button>
+        <button class="btn" id="signin-check">Check status</button>
+        <span class="az-status" id="signin-status"></span>
+      </div>
+      <div class="signin-box" id="signin-box" hidden>
+        <div class="signin-code" id="signin-code" hidden>
+          <span>1. Open</span> <a id="signin-url" target="_blank" rel="noopener noreferrer"></a>
+          <span>2. Enter this code:</span> <code id="signin-code-val"></code>
+          <button class="btn small" id="signin-copy">Copy code</button>
+        </div>
+        <pre class="log" id="signin-out"></pre>
+      </div>
+    </div>
+  </div>
+</header>
+<div class="banner" id="banner">Can't reach the AzCopy Runner server. Is its Terminal window still open? Start it again with: bash start.sh</div>
+
+<main>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty">
+    <p>No transfers yet.</p>
+    <button class="btn primary" id="btn-add-empty">+ New transfer</button>
+  </div>
+</main>
+
+<button class="fab" id="fab" title="Add another transfer (runs in parallel)" aria-label="Add another transfer">
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+</button>
+
+<div class="overlay" id="overlay"><div><h2>AzCopy Runner has stopped</h2><p>You can close this tab. Run <code>bash start.sh</code> to start it again.</p></div></div>
+
+<template id="card-tpl">
+<section class="card" data-state="idle">
+  <div class="card-h">
+    <input class="name" data-f="name" aria-label="Transfer name" spellcheck="false">
+    <span class="pill">Ready</span>
+    <button class="icon dup" title="Duplicate this transfer (tokens included)" aria-label="Duplicate">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+    </button>
+    <button class="icon rm" title="Remove this transfer" aria-label="Remove">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+  </div>
+
+  <fieldset class="formset">
+    <div class="two">
+      <label class="field"><span>Operation</span>
+        <select data-f="operation">
+          <option value="copy" data-help="azcopy copy: copies files from source to destination. Nothing is deleted.">Copy – transfer files</option>
+          <option value="sync" data-help="azcopy sync: makes the destination match the source. Only new or changed files are transferred.">Sync – mirror source to destination</option>
+        </select>
+        <small class="help"></small>
+      </label>
+      <label class="field"><span>Direction</span>
+        <select data-f="direction">
+          <option value="local-blob" data-help="Upload from this PC or a network share to Azure Blob Storage.">Local → Azure Blob (upload)</option>
+          <option value="blob-local" data-help="Download from Azure Blob Storage to this PC or a network share.">Azure Blob → Local (download)</option>
+          <option value="blob-blob" data-help="Copy between containers or storage accounts. Data moves inside Azure, not through this PC.">Azure Blob → Azure Blob</option>
+        </select>
+        <small class="help"></small>
+      </label>
+    </div>
+
+    <label class="field"><span>Authentication</span>
+      <select data-f="auth">
+        <option value="sas" data-help="Paste a SAS token for each Azure side below.">SAS tokens</option>
+        <option value="login" data-help="Uses your company account. Sign in once under Settings → Azure sign-in. Needs the 'Storage Blob Data Reader / Contributor' role. No tokens on the command line.">My Microsoft account (Entra ID sign-in)</option>
+        <option value="spn" data-help="An app registration (service principal) with a client secret. The secret is passed to azcopy privately, not on the command line, and is never saved.">Service principal (app ID + secret)</option>
+      </select>
+      <small class="help"></small>
+    </label>
+
+    <fieldset class="end spn only-spn">
+      <legend>Service principal</legend>
+      <div class="two">
+        <label class="field"><span>Tenant ID</span>
+          <input type="text" data-f="spnTenant" spellcheck="false" autocomplete="off" placeholder="00000000-0000-0000-0000-000000000000">
+        </label>
+        <label class="field"><span>Application (client) ID</span>
+          <input type="text" data-f="spnClient" spellcheck="false" autocomplete="off" placeholder="00000000-0000-0000-0000-000000000000">
+        </label>
+      </div>
+      <label class="field"><span>Client secret</span>
+        <div class="line">
+          <input type="text" class="secret masked" data-f="spnSecret" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" placeholder="Secret value (not the secret ID)">
+          <button type="button" class="btn small eye">Show</button>
+        </div>
+      </label>
+    </fieldset>
+
+    <fieldset class="end src">
+      <legend>Source</legend>
+      <label class="field"><span class="lbl">Source path</span>
+        <div class="line">
+          <input type="text" data-f="source" spellcheck="false">
+          <button type="button" class="btn small browse" data-kind="folder">Folder…</button>
+          <button type="button" class="btn small browse" data-kind="file">File…</button>
+        </div>
+        <small class="help urlhelp">Blob or Data Lake (ADLS Gen2) address – both .blob. and .dfs. URLs work.</small>
+      </label>
+      <label class="field sas"><span>Source SAS token</span>
+        <div class="line">
+          <input type="text" class="secret masked" data-f="sourceSas" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" placeholder="sv=…&amp;sp=rl&amp;se=…&amp;sig=…  (needs Read + List)">
+          <button type="button" class="btn small eye">Show</button>
+        </div>
+      </label>
+    </fieldset>
+
+    <fieldset class="end dst">
+      <legend>Destination</legend>
+      <label class="field"><span class="lbl">Destination path</span>
+        <div class="line">
+          <input type="text" data-f="destination" spellcheck="false">
+          <button type="button" class="btn small browse" data-kind="folder">Folder…</button>
+        </div>
+        <small class="help urlhelp">Blob or Data Lake (ADLS Gen2) address – both .blob. and .dfs. URLs work.</small>
+      </label>
+      <label class="field sas"><span>Destination SAS token</span>
+        <div class="line">
+          <input type="text" class="secret masked" data-f="destSas" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" data-lpignore="true" data-1p-ignore data-bwignore data-form-type="other" placeholder="sv=…&amp;sp=racwl&amp;se=…&amp;sig=…  (needs Write + Create + List)">
+          <button type="button" class="btn small eye">Show</button>
+        </div>
+      </label>
+    </fieldset>
+
+    <details class="opts" open>
+      <summary>Options</summary>
+      <div class="opts-grid">
+        <label class="field"><span>Subfolders</span>
+          <select data-f="recursive">
+            <option value="true" data-help="--recursive=true: everything under the source folder is included.">Include all subfolders</option>
+            <option value="false" data-help="--recursive=false: only files directly in the source folder.">Top-level files only</option>
+          </select>
+          <small class="help"></small>
+        </label>
+        <label class="field only-copy"><span>If the file already exists at destination</span>
+          <select data-f="overwrite">
+            <option value="true" data-help="--overwrite=true: existing destination files are replaced.">Always overwrite it</option>
+            <option value="false" data-help="--overwrite=false: existing destination files are left alone (skipped).">Skip it – keep the existing file</option>
+            <option value="ifSourceNewer" data-help="--overwrite=ifSourceNewer: replaced only when the source copy is newer.">Overwrite only if source is newer</option>
+          </select>
+          <small class="help"></small>
+        </label>
+        <label class="field only-sync"><span>Files at destination that are not in source</span>
+          <select data-f="deleteDestination">
+            <option value="false" data-help="--delete-destination=false: extra files at the destination are kept.">Keep them</option>
+            <option value="true" data-help="--delete-destination=true: CAUTION – extra files at the destination are deleted." data-danger="1">Delete them (exact mirror)</option>
+          </select>
+          <small class="help"></small>
+        </label>
+        <label class="field"><span>Run mode</span>
+          <select data-f="dryRun">
+            <option value="false" data-help="The transfer runs for real.">Run the transfer</option>
+            <option value="true" data-help="--dry-run: lists what would be copied or deleted. Nothing is transferred.">Dry run – preview only, change nothing</option>
+          </select>
+          <small class="help"></small>
+        </label>
+        <label class="field"><span>Bandwidth limit</span>
+          <select data-f="capMbps">
+            <option value="" data-help="azcopy uses as much bandwidth as it can.">No limit</option>
+            <option value="10" data-help="--cap-mbps=10: keeps this transfer from slowing down the office network.">10 Mbps</option>
+            <option value="50" data-help="--cap-mbps=50: keeps this transfer from slowing down the office network.">50 Mbps</option>
+            <option value="100" data-help="--cap-mbps=100: keeps this transfer from slowing down the office network.">100 Mbps</option>
+            <option value="500" data-help="--cap-mbps=500">500 Mbps</option>
+            <option value="1000" data-help="--cap-mbps=1000">1000 Mbps</option>
+          </select>
+          <small class="help"></small>
+        </label>
+        <label class="field"><span>Log detail</span>
+          <select data-f="logLevel">
+            <option value="INFO" data-help="--log-level=INFO: azcopy's normal detailed log.">Normal (INFO)</option>
+            <option value="WARNING" data-help="--log-level=WARNING: only warnings and errors are logged.">Warnings and errors only</option>
+            <option value="ERROR" data-help="--log-level=ERROR: only errors are logged.">Errors only</option>
+          </select>
+          <small class="help"></small>
+        </label>
+        <label class="field wide"><span>Extra azcopy arguments (optional)</span>
+          <input type="text" data-f="extraArgs" spellcheck="false" placeholder='e.g. --include-pattern "*.csv;*.xlsx"   --exclude-path "temp"   --block-size-mb 16'>
+          <small class="help">Added as-is to the end of the command. See "azcopy copy --help".</small>
+        </label>
+      </div>
+    </details>
+
+    <details class="opts more">
+      <summary>More options <span class="muted">– filters, checks, Azure-to-Azure, performance (defaults change nothing)</span></summary>
+      <div class="opts-grid">
+        <label class="field"><span>Only include files named</span>
+          <input type="text" data-f="includePattern" spellcheck="false" placeholder="e.g. *.parquet;*.csv">
+          <small class="help">--include-pattern. Separate several with ;  Empty = all files.</small>
+        </label>
+        <label class="field"><span>Skip files named</span>
+          <input type="text" data-f="excludePattern" spellcheck="false" placeholder="e.g. _SUCCESS;*.crc;*.tmp">
+          <small class="help">--exclude-pattern. Separate several with ;  Empty = skip nothing.</small>
+        </label>
+        <label class="field only-copy"><span>Folder placement</span>
+          <select data-f="asSubdir">
+            <option value="" data-help="Default: copying …/Reports into the destination creates …/destination/Reports.">Put the source folder inside the destination</option>
+            <option value="false" data-help="--as-subdir=false: the folder's contents go straight into the destination (avoids Reports/Reports nesting).">Copy the folder's contents straight into the destination</option>
+          </select>
+          <small class="help"></small>
+        </label>
+        <label class="field only-b2b-copy"><span>Access tier (Hot / Cool / Archive)</span>
+          <select data-f="preserveTier">
+            <option value="" data-help="Default: each file keeps its source tier.">Keep the source tier</option>
+            <option value="false" data-help="--s2s-preserve-access-tier=false: files get the destination account's default tier.">Use the destination's default tier</option>
+          </select>
+          <small class="help"></small>
+        </label>
+        <label class="field only-b2b-copy"><span>File properties and metadata</span>
+          <select data-f="preserveProps">
+            <option value="" data-help="Default: content-type, cache-control and metadata are copied.">Keep them</option>
+            <option value="false" data-help="--s2s-preserve-properties=false: properties and metadata are not copied.">Don't copy them</option>
+          </select>
+          <small class="help"></small>
+        </label>
+        <label class="field only-upload"><span>MD5 checksum</span>
+          <select data-f="putMd5">
+            <option value="" data-help="Default: no checksum is stored.">Don't store checksums</option>
+            <option value="true" data-help="--put-md5: stores an MD5 checksum on each uploaded file, so downloads can verify the contents later.">Store an MD5 checksum on each file</option>
+          </select>
+          <small class="help"></small>
+        </label>
+        <label class="field only-download"><span>MD5 check on download</span>
+          <select data-f="checkMd5">
+            <option value="" data-help="Default (FailIfDifferent): files whose stored MD5 doesn't match fail.">Check when a checksum exists</option>
+            <option value="FailIfDifferentOrMissing" data-help="--check-md5=FailIfDifferentOrMissing: files without a stored MD5 also fail.">Require a checksum on every file</option>
+            <option value="LogOnly" data-help="--check-md5=LogOnly: mismatches are only written to the log.">Only log mismatches</option>
+            <option value="NoCheck" data-help="--check-md5=NoCheck: checksums are ignored.">Don't check</option>
+          </select>
+          <small class="help"></small>
+        </label>
+        <label class="field"><span>Parallel connections</span>
+          <select data-f="concurrency">
+            <option value="" data-help="Default: azcopy picks the number based on this computer.">Automatic</option>
+            <option value="8" data-help="AZCOPY_CONCURRENCY_VALUE=8: gentle on a shared network or busy computer.">8</option>
+            <option value="16" data-help="AZCOPY_CONCURRENCY_VALUE=16">16</option>
+            <option value="32" data-help="AZCOPY_CONCURRENCY_VALUE=32">32</option>
+            <option value="64" data-help="AZCOPY_CONCURRENCY_VALUE=64: good for millions of small files.">64</option>
+            <option value="128" data-help="AZCOPY_CONCURRENCY_VALUE=128: maximum push; uses a lot of memory and connections.">128</option>
+          </select>
+          <small class="help"></small>
+        </label>
+        <label class="field"><span>Connection test</span>
+          <select data-f="estimate">
+            <option value="" data-help="Default: checks access only - fast.">Quick check</option>
+            <option value="true" data-help="Also counts the source files and total size before you start. Can take minutes on very large sources.">Also count files and total size</option>
+          </select>
+          <small class="help"></small>
+        </label>
+        <label class="field"><span>After the transfer</span>
+          <select data-f="verifyAfter">
+            <option value="" data-help="Default: nothing extra.">No extra check</option>
+            <option value="true" data-help="When it finishes, counts the files at the source and the destination (with the same filters) and shows whether anything is missing.">Check that every file arrived</option>
+          </select>
+          <small class="help"></small>
+        </label>
+      </div>
+    </details>
+
+    <div class="preview">
+      <div class="pv-h">Command that will run (tokens hidden)</div>
+      <code class="cmd">…</code>
+    </div>
+  </fieldset>
+  <ul class="msgs"></ul>
+
+  <div class="test" hidden>
+    <div class="test-h">Connection test</div>
+    <ul class="checks"></ul>
+    <div class="test-sum"></div>
+  </div>
+
+  <div class="run" hidden>
+    <div class="bar"><div></div></div>
+    <div class="stats"></div>
+    <div class="meta"></div>
+    <div class="verify" hidden></div>
+    <details class="logwrap" open><summary>Output</summary><pre class="log"></pre></details>
+  </div>
+
+  <div class="actions">
+    <button class="btn primary start" title="Checks azcopy, the paths and the SAS tokens. Nothing is copied yet.">Test connection</button>
+    <button class="btn primary confirm" hidden>Start transfer</button>
+    <button class="btn retest" hidden>Test again</button>
+    <button class="btn back" hidden>Back to edit</button>
+    <button class="btn danger stop" hidden>Stop</button>
+    <button class="btn primary resume" hidden title="Continue this azcopy job where it stopped (azcopy jobs resume)">Resume</button>
+    <button class="btn again" hidden>Edit &amp; run again</button>
+  </div>
+</section>
+</template>
+
+<script>
+// The session key arrives in the #k=... part of the address (never sent to the server or saved in the page).
+function readKey() {
+  const m = location.hash.match(/k=([0-9a-f]+)/);
+  if (m) {
+    try { sessionStorage.setItem("azr-key", m[1]); } catch (e) {}
+    history.replaceState(null, "", location.pathname);   // hide it from the address bar
+    return m[1];
+  }
+  try { return sessionStorage.getItem("azr-key") || ""; } catch (e) { return ""; }
+}
+let KEY = readKey();
+window.addEventListener("hashchange", () => { KEY = readKey(); loadConfig(false); });
+// Masked text fields keep browsers' password managers from offering to save SAS tokens.
+const MASK_CSS = CSS.supports("-webkit-text-security", "disc") || CSS.supports("text-security", "disc");
+const STATUS_TEXT = { running: "Running", completed: "Completed", warning: "Completed with errors", failed: "Failed", stopped: "Stopped" };
+const grid = document.getElementById("grid");
+const tpl = document.getElementById("card-tpl");
+const cards = new Map();
+let PLATFORM = /Mac/.test(navigator.platform) ? "mac" : /Win/.test(navigator.platform) ? "windows" : "linux";
+const LOCAL_PH = {
+  windows: { src: "C:\\Data\\Reports   or   \\\\server\\share\\folder", dst: "D:\\Downloads\\Reports" },
+  mac:     { src: "/Users/you/Documents/Reports   or   ~/Documents/Reports", dst: "~/Downloads/Reports" },
+  linux:   { src: "/home/you/reports   or   ~/reports", dst: "~/downloads/reports" },
+};
+let seq = 0;
+let stopped = false;
+
+async function api(path, body) {
+  const opt = { method: body === undefined ? "GET" : "POST", headers: { "X-Session-Key": KEY, "Content-Type": "application/json" } };
+  if (body !== undefined) opt.body = JSON.stringify(body);
+  const r = await fetch(path, opt);
+  const j = await r.json().catch(() => ({ error: "Unexpected response from server" }));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+
+// ---------- cards
+function addCard(values) {
+  const el = tpl.content.firstElementChild.cloneNode(true);
+  const c = { cid: ++seq, el, jobId: null, state: "idle", lastLog: null, timer: null };
+  const f = n => el.querySelector(`[data-f="${n}"]`);
+  if (values) for (const [k, v] of Object.entries(values)) { const i = f(k); if (i) i.value = v; }
+  f("name").value = values ? `${values.name} (copy)` : `Transfer ${c.cid}`;
+
+  el.querySelectorAll("[data-f]").forEach(i => {
+    i.addEventListener("input", () => onChange(c));
+    i.addEventListener("change", () => onChange(c));
+  });
+  if (!MASK_CSS) el.querySelectorAll(".secret").forEach(i => { i.type = "password"; i.autocomplete = "new-password"; });
+  el.querySelectorAll(".eye").forEach(b => b.addEventListener("click", () => {
+    const i = b.previousElementSibling;
+    const show = MASK_CSS ? i.classList.contains("masked") : i.type === "password";
+    if (MASK_CSS) i.classList.toggle("masked", !show); else i.type = show ? "text" : "password";
+    b.textContent = show ? "Hide" : "Show";
+  }));
+  el.querySelectorAll(".browse").forEach(b => b.addEventListener("click", async () => {
+    const input = b.parentElement.querySelector("input");
+    b.disabled = true;
+    try { const r = await api("/api/browse", { kind: b.dataset.kind, start: input.value }); if (r.path) { input.value = r.path; onChange(c); } }
+    catch (e) { showMsgs(c, [e.message], []); }
+    finally { b.disabled = false; }
+  }));
+  el.querySelector(".dup").addEventListener("click", () => addCard(getValues(c)));
+  el.querySelector(".rm").addEventListener("click", () => removeCard(c));
+  el.querySelector(".start").addEventListener("click", () => testCard(c));
+  el.querySelector(".retest").addEventListener("click", () => testCard(c));
+  el.querySelector(".back").addEventListener("click", () => setState(c, "idle"));
+  el.querySelector(".confirm").addEventListener("click", () => {
+    if (c.testHasErrors && !confirm("The connection test found problems. The transfer will probably fail.\n\nStart anyway?")) return;
+    startCard(c);
+  });
+  el.querySelector(".stop").addEventListener("click", () => stopCard(c));
+  el.querySelector(".again").addEventListener("click", () => setState(c, "idle"));
+  el.querySelector(".resume").addEventListener("click", () => resumeCard(c));
+
+  cards.set(c.cid, c);
+  grid.append(el);
+  onChange(c);
+  updateSummary();
+  el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  f("source").focus({ preventScroll: true });
+}
+
+function getValues(c) {
+  const v = {};
+  c.el.querySelectorAll("[data-f]").forEach(i => v[i.dataset.f] = i.value);
+  return v;
+}
+
+function onChange(c) {
+  const v = getValues(c), el = c.el;
+  const srcBlob = v.direction !== "local-blob", dstBlob = v.direction !== "blob-local";
+  const src = el.querySelector(".src"), dst = el.querySelector(".dst");
+  const sas = !v.auth || v.auth === "sas";
+  src.querySelector(".sas").hidden = !srcBlob || !sas;
+  dst.querySelector(".sas").hidden = !dstBlob || !sas;
+  src.querySelector(".urlhelp").hidden = !srcBlob;
+  dst.querySelector(".urlhelp").hidden = !dstBlob;
+  el.querySelectorAll(".only-spn").forEach(x => x.hidden = v.auth !== "spn");
+  el.querySelectorAll(".only-b2b-copy").forEach(x => x.hidden = !(v.direction === "blob-blob" && v.operation === "copy"));
+  el.querySelectorAll(".only-upload").forEach(x => x.hidden = v.direction !== "local-blob");
+  el.querySelectorAll(".only-download").forEach(x => x.hidden = v.direction !== "blob-local");
+  src.querySelectorAll(".browse").forEach(b => b.hidden = srcBlob);
+  dst.querySelectorAll(".browse").forEach(b => b.hidden = dstBlob);
+  src.querySelector(".lbl").textContent = srcBlob ? "Source blob URL" : "Source folder or file";
+  dst.querySelector(".lbl").textContent = dstBlob ? "Destination blob URL" : "Destination folder";
+  const blobPh = "https://<account>.blob.core.windows.net/<container>/<optional-folder>";
+  const ph = LOCAL_PH[PLATFORM] || LOCAL_PH.linux;
+  el.querySelector('[data-f="source"]').placeholder = srcBlob ? blobPh : ph.src;
+  el.querySelector('[data-f="destination"]').placeholder = dstBlob ? blobPh : ph.dst;
+  el.querySelectorAll(".only-copy").forEach(x => x.hidden = v.operation !== "copy");
+  el.querySelectorAll(".only-sync").forEach(x => x.hidden = v.operation !== "sync");
+  el.querySelectorAll("select").forEach(s => {
+    const o = s.selectedOptions[0], h = s.parentElement.querySelector(".help");
+    if (o && h && o.dataset.help) { h.textContent = o.dataset.help; h.classList.toggle("danger", !!o.dataset.danger); }
+  });
+  clearTimeout(c.timer);
+  c.timer = setTimeout(() => preview(c), 250);
+}
+
+async function preview(c) {
+  if (c.state !== "idle") return;
+  try {
+    const r = await api("/api/preview", getValues(c));
+    c.el.querySelector(".cmd").textContent = r.command;
+    // only show errors once the user has typed something into both paths
+    const v = getValues(c);
+    showMsgs(c, (v.source && v.destination) ? r.errors : [], r.warnings);
+  } catch (e) { /* banner covers server-down */ }
+}
+
+function showMsgs(c, errors, warnings) {
+  const ul = c.el.querySelector(".msgs");
+  ul.innerHTML = "";
+  for (const t of errors || []) { const li = document.createElement("li"); li.className = "err"; li.textContent = t; ul.append(li); }
+  for (const t of warnings || []) { const li = document.createElement("li"); li.className = "warn"; li.textContent = t; ul.append(li); }
+}
+
+function setState(c, state) {
+  c.state = state;
+  const el = c.el;
+  el.dataset.state = state;
+  // the form is locked from the test onwards, so what runs is exactly what was tested
+  el.querySelector(".formset").disabled = state !== "idle";
+  el.querySelector(".start").hidden = state !== "idle";
+  el.querySelector(".confirm").hidden = state !== "tested";
+  el.querySelector(".retest").hidden = state !== "tested";
+  el.querySelector(".back").hidden = state !== "tested";
+  el.querySelector(".stop").hidden = state !== "running";
+  el.querySelector(".again").hidden = state !== "done";
+  el.querySelector(".resume").hidden = !(state === "done" && c.canResume);
+  if (state === "idle") {
+    const pill = el.querySelector(".pill");
+    pill.className = "pill"; pill.textContent = c.jobId ? "Ready (edited)" : "Ready";
+    el.querySelector(".test").hidden = true;
+    onChange(c);
+  }
+  if (state === "running") el.querySelector(".test").hidden = true;
+  updateSummary();
+}
+
+async function testCard(c) {
+  const el = c.el, panel = el.querySelector(".test"), list = el.querySelector(".checks"), sum = el.querySelector(".test-sum");
+  const pill = el.querySelector(".pill");
+  setState(c, "testing");
+  showMsgs(c, [], []);
+  el.querySelector(".run").hidden = true;
+  panel.hidden = false;
+  list.innerHTML = '<li class="running"><span class="ic">…</span><span>Testing azcopy, paths and access. Nothing is copied.</span></li>';
+  sum.className = "test-sum"; sum.textContent = "";
+  pill.className = "pill running"; pill.textContent = "Testing…";
+  try {
+    const r = await api("/api/test", getValues(c));
+    list.innerHTML = "";
+    for (const ch of r.checks) {
+      const li = document.createElement("li"); li.className = ch.status;
+      const ic = document.createElement("span"); ic.className = "ic"; ic.textContent = { ok: "✓", warn: "!", error: "✗" }[ch.status];
+      const tx = document.createElement("span");
+      const b = document.createElement("b"); b.textContent = ch.label + ": ";
+      const d = document.createElement("span"); d.className = "d"; d.textContent = ch.detail;
+      tx.append(b, d); li.append(ic, tx); list.append(li);
+    }
+    el.querySelector(".cmd").textContent = r.command;
+    const errors = r.checks.filter(x => x.status === "error").length, warns = r.checks.filter(x => x.status === "warn").length;
+    c.testHasErrors = errors > 0;
+    const confirmBtn = el.querySelector(".confirm");
+    if (errors) {
+      sum.className = "test-sum error"; sum.textContent = `${errors} problem(s) found. Fix them and test again.`;
+      pill.className = "pill failed"; pill.textContent = "Test failed";
+      confirmBtn.className = "btn danger confirm"; confirmBtn.textContent = "Start anyway";
+    } else {
+      sum.className = "test-sum " + (warns ? "warn" : "ok");
+      sum.textContent = warns ? `Connection OK with ${warns} warning(s). Review them, then start the transfer.`
+                              : "All checks passed. Review the command above, then start the transfer.";
+      pill.className = "pill completed"; pill.textContent = "Test passed";
+      confirmBtn.className = "btn primary confirm"; confirmBtn.textContent = "Start transfer";
+    }
+    setState(c, "tested");
+    confirmBtn.focus({ preventScroll: true });
+    panel.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } catch (e) {
+    setState(c, "idle");
+    showMsgs(c, ["Connection test failed to run: " + e.message], []);
+  }
+}
+
+async function startCard(c) {
+  const btn = c.el.querySelector(".confirm");
+  btn.disabled = true;
+  setState(c, "starting");
+  try {
+    const r = await api("/api/jobs", getValues(c));
+    c.jobId = r.job.id; c.lastLog = null; c.verifyAsked = false; c.verifying = false;
+    showMsgs(c, [], []);
+    c.el.querySelector(".verify").hidden = true;
+    c.el.querySelector(".run").hidden = false;
+    setState(c, "running");
+    renderJob(c, r.job);
+  } catch (e) {
+    setState(c, "idle");
+    showMsgs(c, [e.message], []);
+  } finally { btn.disabled = false; }
+}
+
+async function resumeCard(c) {
+  const btn = c.el.querySelector(".resume");
+  btn.disabled = true;
+  try {
+    const r = await api(`/api/jobs/${c.jobId}/resume`, getValues(c));
+    c.jobId = r.job.id; c.lastLog = null; c.verifyAsked = false;
+    showMsgs(c, [], []);
+    c.el.querySelector(".verify").hidden = true;
+    setState(c, "running");
+    renderJob(c, r.job);
+  } catch (e) {
+    showMsgs(c, ["Resume failed: " + e.message], []);
+  } finally { btn.disabled = false; }
+}
+
+async function stopCard(c) {
+  if (!confirm(`Stop "${getValues(c).name}"?\n\nazcopy can resume it later with: azcopy jobs resume <job id>`)) return;
+  try { renderJob(c, (await api(`/api/jobs/${c.jobId}/stop`, {})).job); } catch (e) { showMsgs(c, [e.message], []); }
+}
+
+async function removeCard(c) {
+  if (c.state === "running") {
+    if (!confirm(`"${getValues(c).name}" is still running. Stop it and remove it?`)) return;
+    try { await api(`/api/jobs/${c.jobId}/stop`, {}); } catch (e) {}
+  }
+  c.el.remove(); cards.delete(c.cid); updateSummary();
+}
+
+function renderJob(c, j) {
+  const el = c.el;
+  const pill = el.querySelector(".pill");
+  pill.className = "pill " + j.status;
+  pill.textContent = STATUS_TEXT[j.status] || j.status;
+  const bar = el.querySelector(".bar");
+  bar.classList.toggle("indet", j.status === "running" && j.percent == null);
+  bar.firstElementChild.style.width = (j.percent ?? 0) + "%";
+  bar.firstElementChild.style.background = { completed: "var(--ok)", warning: "var(--warn)", failed: "var(--bad)", stopped: "var(--warn)" }[j.status] || "var(--run)";
+  el.querySelector(".stats").textContent = j.progress || (j.status === "running" ? "Starting… scanning files" : "");
+  const meta = [`Started ${j.started}`];
+  if (j.ended) meta.push(`Ended ${j.ended}`);
+  if (j.azJobId) meta.push(`azcopy job ${j.azJobId}`);
+  if (j.exitCode != null) meta.push(`exit code ${j.exitCode}`);
+  meta.push(`Log: ${j.logFile}`);
+  if (j.ended && j.manifest) meta.push(`Run record: ${j.manifest}`);
+  if (j.resumedFrom) meta.push(`resumed run`);
+  const m = el.querySelector(".meta"); m.innerHTML = "";
+  meta.forEach(t => { const s = document.createElement("span"); s.textContent = t; m.append(s); });
+  el.querySelector(".cmd").textContent = j.command;
+  if (j.log !== c.lastLog) {
+    const pre = el.querySelector(".log");
+    const atBottom = pre.scrollHeight - pre.scrollTop - pre.clientHeight < 30;
+    pre.textContent = j.log || "(no output yet)";
+    if (atBottom || c.lastLog === null) pre.scrollTop = pre.scrollHeight;
+    c.lastLog = j.log;
+  }
+  c.canResume = !!j.canResume;
+  const vb = el.querySelector(".verify");
+  if (j.verify) {
+    vb.hidden = false;
+    vb.className = "verify " + j.verify.status;
+    vb.textContent = ({ ok: "✓ ", warn: "! ", running: "… " }[j.verify.status] || "") + "Check after copy: " + j.verify.detail;
+    c.verifying = j.verify.status === "running";
+  }
+  if (j.status !== "running" && c.state === "running") {
+    setState(c, "done");
+    const v = getValues(c);
+    if (v.verifyAfter === "true" && v.dryRun !== "true" && !c.verifyAsked && (j.status === "completed" || j.status === "warning")) {
+      c.verifyAsked = true;
+      api(`/api/jobs/${c.jobId}/verify`, v).then(r => renderJob(c, r.job)).catch(e => showMsgs(c, ["Check after copy failed: " + e.message], []));
+    }
+  }
+}
+
+function updateSummary() {
+  const all = [...cards.values()];
+  const running = all.filter(c => c.state === "running").length;
+  document.getElementById("empty").style.display = all.length ? "none" : "";
+  document.getElementById("summary").textContent = all.length
+    ? `${all.length} transfer${all.length > 1 ? "s" : ""} · ${running} running`
+    : "No transfers yet";
+}
+
+// ---------- polling
+async function poll() {
+  if (stopped) return;
+  try {
+    if ([...cards.values()].some(c => c.jobId && (c.state === "running" || c.lastLog === null || c.verifying))) {
+      const { jobs } = await api("/api/jobs");
+      const byId = new Map(jobs.map(j => [j.id, j]));
+      for (const c of cards.values()) if ((c.state === "running" || c.verifying) && byId.has(c.jobId)) renderJob(c, byId.get(c.jobId));
+    } else {
+      await api("/api/preview", {}); // heartbeat
+    }
+    document.getElementById("banner").classList.remove("show");
+  } catch (e) {
+    const b = document.getElementById("banner");
+    if (e.message === "Forbidden") b.textContent = "This page was opened without its session key. Open the link shown in the AzCopy Runner Terminal window (it ends with #k=…).";
+    b.classList.add("show");
+  }
+  setTimeout(poll, 1000);
+}
+
+// ---------- settings
+async function loadConfig(save) {
+  const st = document.getElementById("az-status");
+  st.className = "az-status"; st.textContent = "Checking…";
+  try {
+    const r = save ? await api("/api/config", { azcopyPath: document.getElementById("az-path").value }) : await api("/api/config");
+    document.getElementById("az-path").value = r.azcopyPath || "";
+    if (r.platform && r.platform !== PLATFORM) { PLATFORM = r.platform; cards.forEach(onChange); }
+    if (r.resolved) {
+      st.className = "az-status ok";
+      st.textContent = `✓ ${(r.version || "azcopy").split("\n")[0]} — ${r.resolved}`;
+    } else {
+      st.className = "az-status bad";
+      st.textContent = r.error ? "✗ " + r.error : "✗ azcopy not found. Put it in the AzCopyRunner folder or enter its full path.";
+      document.getElementById("settings").hidden = false;
+      document.getElementById("btn-settings").setAttribute("aria-expanded", "true");
+    }
+  } catch (e) { st.className = "az-status bad"; st.textContent = e.message; }
+}
+
+document.getElementById("btn-settings").addEventListener("click", e => {
+  const s = document.getElementById("settings"); s.hidden = !s.hidden;
+  e.currentTarget.setAttribute("aria-expanded", String(!s.hidden));
+  if (!s.hidden && !document.getElementById("signin-status").textContent) checkSignin();
+});
+document.getElementById("az-save").addEventListener("click", () => loadConfig(true));
+document.getElementById("az-browse").addEventListener("click", async () => {
+  const i = document.getElementById("az-path");
+  try { const r = await api("/api/browse", { kind: "file", start: i.value }); if (r.path) { i.value = r.path; loadConfig(true); } } catch (e) {}
+});
+for (const id of ["btn-add", "btn-add-empty", "fab"]) document.getElementById(id).addEventListener("click", () => addCard());
+
+// ---------- Azure sign-in (azcopy login)
+const $ = id => document.getElementById(id);
+function setSigninStatus(text, cls) { const s = $("signin-status"); s.className = "az-status " + (cls || ""); s.textContent = text; }
+async function checkSignin(path = "/api/login/status") {
+  setSigninStatus("Checking…");
+  try {
+    const r = await api(path, {});
+    setSigninStatus(r.signedIn ? "✓ Signed in" : "Not signed in" + (r.detail ? ` (${r.detail})` : ""), r.signedIn ? "ok" : "");
+  } catch (e) { setSigninStatus(e.message, "bad"); }
+}
+function renderLogin(r) {
+  const waiting = r.state === "waiting";
+  $("signin").hidden = waiting; $("signin-cancel").hidden = !waiting;
+  $("signin-box").hidden = !r.output && !waiting;
+  $("signin-out").textContent = r.output || "Starting azcopy login…";
+  const showCode = waiting && r.code && r.url;
+  $("signin-code").hidden = !showCode;
+  if (showCode) {
+    $("signin-url").href = r.url; $("signin-url").textContent = r.url;
+    $("signin-code-val").textContent = r.code;
+  }
+  if (waiting) setSigninStatus("Waiting for you to finish signing in…");
+}
+async function pollLogin() {
+  try {
+    const r = await api("/api/login");
+    renderLogin(r);
+    if (r.state === "waiting") return setTimeout(pollLogin, 1500);
+    if (r.state === "done") checkSignin();
+    else if (r.state === "failed") setSigninStatus("Sign-in failed – see the output below.", "bad");
+  } catch (e) { setSigninStatus(e.message, "bad"); }
+}
+$("signin").addEventListener("click", async () => {
+  try { renderLogin(await api("/api/login", { tenantId: $("tenant").value })); pollLogin(); }
+  catch (e) { setSigninStatus(e.message, "bad"); }
+});
+$("signin-cancel").addEventListener("click", async () => { renderLogin(await api("/api/login/cancel", {})); setSigninStatus("Cancelled."); });
+$("signout").addEventListener("click", () => checkSignin("/api/logout"));
+$("signin-check").addEventListener("click", () => checkSignin());
+$("signin-copy").addEventListener("click", () => navigator.clipboard?.writeText($("signin-code-val").textContent));
+document.getElementById("btn-quit").addEventListener("click", async () => {
+  const running = [...cards.values()].filter(c => c.state === "running").length;
+  const msg = running
+    ? `${running} transfer(s) are still running. Quit will STOP them and close AzCopy Runner. Continue?`
+    : "Close AzCopy Runner?";
+  if (!confirm(msg)) return;
+  try { await api("/api/shutdown", { stopJobs: true }); } catch (e) {}
+  stopped = true;
+  document.getElementById("overlay").classList.add("show");
+});
+window.addEventListener("beforeunload", e => {
+  if (!stopped && [...cards.values()].some(c => c.state === "running")) { e.preventDefault(); e.returnValue = ""; }
+});
+
+loadConfig(false);
+addCard();
+poll();
+</script>
+</body>
+</html>
